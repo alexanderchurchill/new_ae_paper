@@ -2,14 +2,20 @@
 \usepackage{ecj,palatino,epsfig,latexsym,natbib}
 \usepackage{graphicx,caption,afterpage,subfigure}
 \usepackage{mathtools}
-%% do not add any other page- or text-size instruction here
-
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{array}
+\usepackage{eqparbox}
+\usepackage{color}
+\renewcommand\algorithmiccomment[1]{%
+  \hfill\#\ \eqparbox{COMMENT}{#1}%
+}
 \parskip=0.00in
 
 \begin{document}
 
 \ecjHeader{x}{x}{xxx-xxx}{201X}{45-character paper description goes here}{A.W. Churchill, S. Sigtia and C. Fernando}
-\title{\bf Using Neural Networks to produce Effective Mutation Distributions}  
+\title{\bf Learning to Generate Genotypes}  
 
 \author{\name{\bf Alexander W. Churchill} \hfill \addr{alexanderchurchill@gmail.com}\\ 
         \addr{Queen Mary, University of London}
@@ -19,13 +25,13 @@
 \AND
        \name{\bf Chrisantha Fernando} \hfill \addr{c.fernando@qmul.ac.uk}\\
         \addr{Queen Mary, University of London}
-}
+}Bayesian network
 
 \maketitle
 
 \begin{abstract}
 
-Neural networks and evolutionary computation have a rich intertwined history. They most commonly appear together when an evolutionary algorithm is used to optimise the parameters and topology of a neural network for reinforcement learning problems or for supervised learning when complex temporal dynamics are required. In this paper we take the opposite approach, asking the question of whether a neural network can be used to provide a mutation distribution for an evolutionary algorithm, and what advantages this approach may offer? 
+Neural networks and evolutionary computation have a rich intertwined history. They most commonly appear together when an evolutionary algorithm is used to optimise the parameters and topology of a neural network for reinforcement learning problems or when a neural network is applied as a surrogate fitness function to aid the optimisation of expensive fitness functions. In this paper we take a different approach, asking the question of whether a neural network can be used to provide a mutation distribution for an evolutionary algorithm, and what advantages this approach may offer? Two modern neural network models are investigated, a denoising autoencoder modified to produce stochastic outputs and a generative model that learns a Bayesian network, the Neural Autoregressive Distribution Estimator. Results show that the neural network approach to learning genotypes is able to solve many difficult discrete problems, such as MaxSat and HIFF, and regularly outperforms other evolutionary techniques.
 
 \end{abstract}
 
@@ -39,19 +45,21 @@ Neural Networks.
 
 \end{keywords}
 \section{Introduction}
-Evolutionary Algorithms typically employ static exploration methods, such as recombination and mutation, in order to traverse a search space. A problem with this approach is that ``building blocks", by which we mean structural features of the search space, can be easily broken, discarding important information acquired during the search process. Addressing this problem are Estimation of distribution algorithms (EDAs), which attempt to statistically model sections of a search space in order to uncover underlying structure and guide search towards optimal solutions in an efficient manner \cite{pelikan2006scalable}.
+Evolutionary Algorithms typically employ static exploration methods, such as recombination and mutation, in order to traverse a search space. A problem with this approach is that ``building blocks", by which we mean structural features of the search space, can be easily broken, discarding important information acquired during the search process. Addressing this problem are Estimation of distribution algorithms (EDAs), which attempt to statistically model sections of a search space in order to uncover underlying structure and guide search towards optimal solutions in an efficient manner (\cite{pelikan2006scalable}).
 
-At the heart of any EDA lies a model-building process. Examples include Bayesian Networks, Markov Networks and K-Means clustering \cite{pelikan2002survey}. In this paper we introduce and investigate two neural-based methods for modelling: a Denoising Autoencoder (dA) and the Neural Autoregressive Distribution Estimator (NADE). An autoencoder is a feed forward neural network, consisting of at least one hidden layer, which is trained to reproduce its inputs from its outputs. Over the course of training, the hidden layer forms a, typically compressed, representation of the inputs, which can be used for various machine learning tasks (\cite{hinton2006reducing}). In this paper we use two special types of autoencoders. The dA is an autoencoder trained using inputs corrupted stochastically, which acts as a strong regulariser and also widens the basins of attraction. Although the dA is not a generative model, the encoding process can capture relationships between variables, which when combined with stochastic outputs can provide mutations to inputs that are guided by the encoded structure of the search space. %We claim that a denoising autoencoder can be used to learn complex probability distributions that define the best genotypes in a generation, and guide search towards promising regions.%
-We also investigate the NADE, an autoencoder instance that explicitly learns a generative model from data, and has been shown to rival a Restricted Boltzmann Machine but with a considerably lower computational cost. Results show that an evolutionary algorithm incorporating the autoencoder models is able to outperform a canonical genetic algorithm (GA) across a range of combinatorial optimisation problems, as well as the PBIL and BOA EDAs in several cases.
+At the heart of any EDA lies a model-building process. Examples include Bayesian Networks, Markov Networks and K-Means clustering (\cite{pelikan2002survey}). In this paper we introduce and investigate two neural-based methods for modelling: a Denoising Autoencoder (dA) and the Neural Autoregressive Distribution Estimator (NADE). An autoencoder is a feed forward neural network, consisting of at least one hidden layer, which is trained to reproduce its inputs from its outputs. Over the course of training, the hidden layer forms a, typically compressed, representation of the inputs, which can be used for various machine learning tasks(\cite{hinton2006reducing}). We explore two special types of autoencoders for learning effective genotypes. The dA is an autoencoder trained using inputs that are stochastically corrupted, which acts as a strong regulariser and also widens the basins of attraction. Although the dA is not a generative model, the encoding process can capture relationships between variables, which when combined with stochastic outputs can provide mutations to seen solutions, guided by the learnt encoded structure of the search space. %We claim that a denoising autoencoder can be used to learn complex probability distributions that define the best genotypes in a generation, and guide search towards promising regions.%
+We also investigate the NADE, an autoencoder instance that explicitly learns a generative model from data, and has been shown to rival a Restricted Boltzmann Machine but with a considerably lower computational cost (\cite{larochelle2011neural}). Results show that an evolutionary algorithm incorporating the autoencoder models is able to outperform a canonical genetic algorithm (GA) across a range of combinatorial optimisation problems, as well as the PBIL and BOA EDA methods in several cases.
 
 \section{Background}
 
-EDAs (also known as Probabilistic-Model-Building Genetic Algorithms) are population based optimisers, that typically replace genetic operators with a statistical model. The rationale behind the model building and related linkage learning approach is that dependencies between variables can be captured and preserved. Early work on EDAs concentrated on methods that explicitly modelled the probabilities of features occurring independently in a population of genotypes. These include the compact Genetic Algorithm \cite{harik1999compact}, PBIL \cite{baluja1994population} and Univariate Marginal Probability methods \cite{pelikan2002survey}. Improved success was found by modelling multivariate dependencies using clustering algorithms (ECGA) \cite{harik1999linkage}, Bayesian Networks, Markov Networks and tree structures \cite{pelikan2002survey}, among others.
+Since their introduction in \cite{holland1975adaptation}, evolutionary algorithms have themselves evolved, with extensive work exploring representation schemes, operators, parallelisation, co-evolution and multi-objective problems to name but a few areas. One key concern has been to reduce the sensitivity to initial parameters, e.g. self adaptive algorithms (\cite{back1993overview}), and automate the perceived dark art of designing genetic operators. Tackling the latter are Estimation of Distribution Algorithms (EDAs), also known as Probabilistic-Model-Building Genetic Algorithms, which are population based optimisers, that typically replace genetic operators with a statistical model. The rationale behind the model building and related linkage learning approach (e.g. \cite{thierens2010linkage,harik1999linkage}) is that dependencies between variables can be captured and preserved. Search can be biased by sampling from the learnt structure of promising areas of the search space. Early work on EDAs concentrated on methods that explicitly modelled the probabilities of features occurring independently in a population of genotypes. These include the compact Genetic Algorithm (\cite{harik1999compact}), Population-Based Incremental Learner (PBIL) (\cite{baluja1994population}) and Univariate Marginal Probability methods (\cite{pelikan2002survey}). Improved success was found by modelling multivariate dependencies using clustering algorithms, e.g. the Extended Compact Genetic Algorithm (\cite{harik1999linkage}); Bayesian Networks, e.g the Bayesian Optimisation Algorithm (BOA) (pelikan2002scalability); Markov Networks and tree structures, among others (\cite{pelikan2002survey}). The popular and successful CMA-ES can be considered both a type of EDA and self-adaptive algorithm (\cite{hansen2003reducing}).
 
 %Our use of the autoencoder model is motivated by its potential to learn high-dimensional non-linear dependencies in data, while maintaining a low computational cost in terms of training time. 
-Recently there has been interest in neural-based methods in an EDA context for multi-objective optimisation. A Growing Neural Gas (GNG) was used as a model in \cite{marti2008introducing}, employing a competitive Hebbian learning rule to cluster data without having to pre specify the number of groups. A shallow Restricted Boltzmann Machine (RBM) was used to model high dimensional data in \cite{tang2010restricted}, beating the state-of-the-art on several multi-objective continuous benchmark problems. Helmholtz machines have also been applied to this task with promising results \cite{zhang2000bayesian}. Autoencoders (also known as auto-associators) are also neural-based methods and have hitherto not been applied to combinatorial optimisation problems. We hypothesise that autoencoders have several interesting properties which can be favourably exploited for use in an evolutionary algorithm. 
+Neural networks and evolutionary computation have a rich intertwined history. They most commonly appear together when an evolutionary algorithm is used to optimise the parameters and topology of a neural network for reinforcement learning problems or when a neural network is applied as a surrogate fitness function to aid the optimisation of expensive fitness functions. In the first case, initial work directly encoded the synaptic weights, such as in \cite{montana1989training}. This has been found to have serious limitations and modern work such as Hyper-NEAT (\cite{stanley2009hypercube}) employs indirect encodings that allow both the weights and topologies of large networks to be successful optimised simultaneously. Other than using evolutionary techniques to effectively train neural networks, there has also been interest in employing neural networks in the search process. Early work has shown that including learning in evolution can improve the effectiveness and efficiency of optimisation, e.g. (\cite{hinton1987learning,nolfi1994learning}). This is the standpoint taken in this paper but coming from a different perspective. While the evolutionary algorithm in (\cite{hinton1987learning,nolfi1994learning}) is applied to optimising a neural network and uses learning through backpropagation (\cite{rumelhart1988learning}) in a Baldwinian or Lamarckian process, here we use neural networks to learn to generate incrementally more effective genotypes, either through a guided mutation (with the denoising autoencoder) or a learnt distribution (with the NADE).
 
-Another motivation for using an autoencoder approach is to investigate methods in which evolutionary algorithms can be implemented using neural structures. The {\em{Neural Replicator Hypothesis}} \cite{fernando2010neuronal} proposes that evolutionary dynamics could operate in the brain at ontogenetic timescales. In \cite{fernando2010neuronal}, a (1+1)-ES is implemented in a network of spiking neurons. Adding Hebbian learning enabled linkages to be found between features, and the 128-bit HIFF problem to be solved significantly faster than by a genetic algorithm. However, Hebbian learning is restricted to learning only pairwise relationships between variables. Autoencoders have the potential to learn complex multivariate interactions. 
+With the `neural networks revival' of the last decade, which has seen neural network methods frequently outperforming other machine learning techniques, there has been interest in neural-based methods in an EDA context, particularly for multi-objective optimisation. A Growing Neural Gas (GNG) was used as a model in \cite{marti2008introducing}, employing a competitive Hebbian learning rule to cluster data without having to pre specify the number of groups. A shallow Restricted Boltzmann Machine (RBM) was used to model high dimensional data in (\cite{tang2010restricted},shim2013multi), beating the state-of-the-art on several multi-objective continuous benchmark problems. Helmholtz machines have also been applied to this task with promising results \cite{zhang2000bayesian}. Autoencoders (also known as auto-associators) are also neural-based method for unsupervised learning and have hitherto not been applied to combinatorial optimisation problems. As we will see in the next section, autoencoders have several interesting properties which can be favourably exploited to learn to generate genotypes in an evolutionary algorithm.
+
+Another motivation for using an autoencoder approach is to investigate methods in which evolutionary algorithms can be implemented using neural structures. The {\em{Neural Replicator Hypothesis}} \cite{fernando2010neuronal} proposes that evolutionary dynamics could operate in the brain at ontogenetic timescales. In \cite{fernando2010neuronal}, a (1+1)-ES is implemented in a network of spiking neurons. Adding Hebbian learning enabled linkages to be found between features, and the 128-bit HIFF problem to be solved significantly faster than by a genetic algorithm. However, Hebbian learning is restricted to learning only pairwise relationships between variables, while autoencoders have the potential to learn complex multivariate interactions.
 
 \section{Methods}
 
@@ -85,29 +93,67 @@ Although the outputs of the decoder network can be viewed as the parameters of a
 The NADE belongs to the family of fully visible bayesian networks that factorise the joint distribution of some data $x$ as a product of one-dimensional conditional distributions:
 $$ P(x) = \prod_{i=1}^{D} P(x_i|x_{<i})$$ where $x_{<i} \equiv \left\{ x_k, \forall k < i \right\} $  and $D$ is the dimensionality of the input space. The main advantage of the factorisation above is that instead of trying to model a complex high-dimensional multi-modal distribution for $x$, the problem can be simplified to estimating the one-dimensional conditionals $P(x_i|x_{<i})$. A complex distribution can be estimated accurately if each conditional is learnt cosrrectly. For the NADE: 
 $$P(v_i=1|v_{i<i}) =  \sigma(b_i + W_{i,.}\sigma(c+W_{.,<i}x_{<i}))$$ where $W_{.,<i}$ denotes a submatrix of $W$ with colums $1$ to $i-1$. 
-The above network is equivalent to a feed-forward neural network for each conditional, with weight sharing between the neural networks. The tied connections distinguish the NADE from other fully visible bayesian networks and make it computationally tractable to train and obtain probabilities at test time. Another advantage while using the NADE is that the log-likelihood and therefore the gradients can be computed exactly. This implies that the model can be trained with powerful gradient based optimisers without having to resort to sampling to esimate the log-likelihood like in training RBMs. 
+The above network is equivalent to a feed-forward neural network for each conditional, with weight sharing between the neural networks. The tied connections distinguish the NADE from other fully visible bayesian networks and make it computationally tractable to train and obtain probabilities at test time. Another advantage while using the NADE is that the log-likelihood and therefore the gradients can be computed exactly. This implies that the model can be trained with powerful gradient based optimisers without having to resort to sampling to estimate the log-likelihood like in training RBMs. 
 
 
 \subsection{Optimisation Algorithm}
 
-The pipeline of the \emph{Denoising Autoencoder Genetic Algorithm} (DAGA) is similar to other EDAs and is inspired by methods in HBOA \cite{hboa}. A population of solutions is maintained, \(P_t\), and updated at each iteration, \(t\). An initial population of solutions, \(P_0\), is drawn from a uniform distribution. These solutions are evaluated and the fittest unique x\% are selected (i.e. truncation selection) to be in the training set, \(\hat{P_t}\). The Denoising Autoencoder, \(D_t\), is then trained with \(\hat{P_t}\) for \(e\) epochs. Following training, a new set of solutions, \(S_t\), is selected from \(P\) using tournament selection (with replacement). Each member of \(S_t\) is inputted to \(D_t\), and the output vector, \(y\), is sampled from using a binomial distribution, to produce a new solution. This solution is included in \(P_{t+1}\) if it is better than its closest neighbour according to Restricted Tournament Selection (RTR) \cite{hboa}.
+The pipeline of the optimisation algorithm is similar to canonical EDAs and is inspired by methods in HBOA (\cite{hboa}). Pseudocode is provided in Algorithm 1 below. A population of \(P\) solutions is maintained, \(pop_t\), and updated at each iteration, \(t\). An initial population of solutions, \(pop_0\), is drawn from a uniform distribution. These solutions are evaluated and the fittest unique x\% are selected (i.e. truncation selection) to be in the training set, \(trainingData_t\). The model, \(model_t\), is then trained with \(trainingData_t\) for \(E\) epochs. Following training, \(P\) solutions are stochastically sampled from the model and stored in \(samples_t\). Solutions from \(samples_t\) are then incorporated into \(pop_{t+1}\).
 
+There are slight differences in the algorithm based on the neural network model. For the denoising autoencoder (GA-dA), \(trainingData_t\) consists of the fittest unique x\% of solutions from the population are selected. For generating samples in GA-dA, a new set of solutions, \(input_t\), is selected from \(P\) using tournament selection (with replacement). Each member of \(input_t\) is inputted to the dA model, and the output vector, \(y_t\), is sampled from using a binomial distribution, to produce a new solution. For the NADE model (GA-NADE), solutions are sampled from the model until \(samples_t\) contains solutions not present in \(pop_t\). Both GA-dA and GA-NADE can use a niching technique. Although any method could be used, here we employ Restricted Tournament Selection (RTR) (\cite{hboa}). A solution from \(samples_t\) is included in \(P_{t+1}\) if it is better than its closest neighbour in a randomly chosen subset of the population of size, \(W\). Whether to use niching or not, as well as other parameters are determined through a parameter sweep on a problem by problem basis.
+ 
+\begin{algorithm}                      % enter the algorithm environment
+\caption{Evolutionary optimisation with the NADE or denoising autoencoder models }          % give the algorithm a caption
+\label{alg1}                           % and a label for \ref{} commands later in the document
+\begin{algorithmic}                    % enter the algorithmic environment
+    \STATE $P \Leftarrow \text{population size}$ 
+    \STATE $T \Leftarrow \text{\% population used for training}$
+    \STATE $E \Leftarrow \text{no. epochs of backprop}$
+    \STATE $LR \Leftarrow \text{learning rate for backprop}$
+    \STATE $H \Leftarrow \text{no. hidden neurons}$
+    \STATE $NICHING \Leftarrow \text{[True \OR False]}$\COMMENT{Use niching?}
+    \STATE $W \Leftarrow \text{window size for niching}$
+    \STATE $EVALS \Leftarrow \text{Max no. evaluations}$
+    \STATE $evalsCount \Leftarrow \text{0}$
+    \STATE $model \Leftarrow \text{dA \OR NADE}$ \COMMENT{Choose neural network model}
+    \STATE $pop \Leftarrow \text{Initialise population}$
+    \WHILE{$evalsCount < EVALS$}
+        \STATE $trainingData = getTrainingData(model,pop,T)$
+        \STATE $model = trainModel(model,trainingData)$
+        \IF{$model$ is dA}
+            \STATE $input = tournamentSelection(pop,P)$
+            \STATE $samples = sampleModel(model,P,input)$
+        \ELSE
+            \STATE $samples = sampleModel(model,P)$
+        \ENDIF
+        \STATE $evaluate(samples) = i$
+        \STATE $evalsCount = evalsCount + P$
+        \IF{$NICHING$ is True}
+            \STATE $pop = newPopulationNiching(pop,samples)$
+        \ELSE
+            \STATE $pop = samples$
+        \ENDIF
+    \ENDWHILE
+    \RETURN $pop$
+\end{algorithmic}
+\end{algorithm}
 \section{Experiments}
 \label{sec:experiments}
-DAGA is tested on three sets of experiments: (1) discrete, (2) continuous and (3) accumulation of adaptation problems. 
-
-\subsection{Multi-dimensional Knapsack Problem}
+The neural network-based optimisation algorithms (GA-dA and GA-NADE) are tested on several difficult discrete problems and their performance is compared to a GA, PBIL and BOA. Below we describe the problems and problem instances tested and the comparison algorithms.
+\subsection{Problems}
+\label{sec:problems}
+\subsubsection{Multi-dimensional Knapsack Problem}
 Here we wish to choose of subset of \(N\) items to maximise the total value of items, \(z\), while satisfying \(m\) constraints. We wish to maximise:
 \vspace{2mm}\\
 \(z = \sum_{j=1}^{N} v_jx_j\), subject to \(\sum_{j=1}^{N} w_{ij}x_i \leq c_i, i = 1, ..., m\)
 \vspace{2mm}\\
 \(x_i \in \{0,1\}, j = 1, ..., N\).
 \vspace{2mm}\\
-Two different instances are used in the results presented below. The first is the Weing8 instance \cite{ref}, which has 105 items and two constraints (optimal solution is 602,319), and the second is a randomly generated instance with 500 items and one constraint (optimal solution is 100,104). Both instances are available in the supplementary material. If any of the \(m\) constraints are violated, the total value of chosen items is multiplied by \(-1\).
+Two different instances are used in the results presented below. The first is the Weing8 instance \cite{weingartner1967methods}, which has 105 items and two constraints (optimal solution is 602,319), and the second is a randomly generated instance with 500 items and one constraint (optimal solution is 100,104). Both instances are available in the supplementary material. If any of the \(m\) constraints are violated, the total value of chosen items is multiplied by \(-1\).
 \subsubsection{Hierarchical If and only If}
-The Hierarchical If and only If (HIFF) problem was created by Watson et al., as an example of a function which is not separable \cite{ref}. It is a pathological function for a hill climber because of a very large number of local optima. The HIFF is structured as a balanced binary tree \cite{hboa}, where at each lower level a transfer function is applied to consecutive non-overlapping 2-bit partitions, 00 \(\rightarrow\) 0, 11 \(\rightarrow\) 1, anything else \(\rightarrow\) null, to define the string in the layer above. At each level, 00 and 11 blocks contribute to the fitness by \(2^{level}\). Two global optima exist, a string of all 1s and all 0s. In the results section, DAGA is applied to the 128-bit HIFF. In order to remove any possible bias towards an all 1s solution, solutions from DAGA have a random bit mask (fixed before each trial) applied to them before evaluating fitness.
+The Hierarchical If and only If (HIFF) problem was created by Watson et al., as an example of a function which is not separable (\cite{watson1999hierarchically}). It is a pathological function for a hill climber because of a very large number of local optima. The HIFF is structured as a balanced binary tree (\cite{hboa}), where at each lower level a transfer function is applied to consecutive non-overlapping 2-bit partitions, 00 \(\rightarrow\) 0, 11 \(\rightarrow\) 1, anything else \(\rightarrow\) null, to define the string in the layer above. At each level, 00 and 11 blocks contribute to the fitness by \(2^{level}\). Two global optima exist, a string of all 1s and all 0s. In the results section, the algorithms are applied to the 128-bit and 256-bit problem instances. In order to remove any possible bias towards an all 1s solution, solutions from the neural network models have a random bit mask (fixed before each trial) applied to them before evaluating fitness.
 \subsubsection{Royal Road}
-The Royal Road function as defined by Mitchell et al. \cite{mitchell}, divides a bit string, \(x\), into a number of equally sized, non-overlapping partitions, \(z_i\in[x_i, ..., x_{i+n}])\). If all of the bits in the partition match a predefined pattern, \(s_i\) , then the partition's fitness contribution is added to the overall fitness. The existence of these ``Building blocks" was meant to act as a ``royal road" for GAs compared to hill-climbers but bad alleles hitchhiking to good partial solutions slows down convergence speed. The 128-bit problem with 16 8-bit partitions is defined as,
+The Royal Road function as defined by \cite{mitchell1992royal}, divides a bit string, \(x\), into a number of equally sized, non-overlapping partitions, \(z_i\in[x_i, ..., x_{i+n}])\). If all of the bits in the partition match a predefined pattern, \(s_i\) , then the partition's fitness contribution is added to the overall fitness. The existence of these ``Building blocks" was meant to act as a ``royal road" for GAs compared to hill-climbers but bad alleles hitchhiking to good partial solutions slows down convergence speed. The 128-bit problem with 16 8-bit partitions is defined as,
 \\
 \[
 f(x)= \sum_{i=1}^{16} \delta_i(x)o(s_i), \text{\ \ where\ } \delta_i(x) \begin{dcases*}
@@ -115,10 +161,22 @@ f(x)= \sum_{i=1}^{16} \delta_i(x)o(s_i), \text{\ \ where\ } \delta_i(x) \begin{d
 0, \text{\ \ \ \ otherwise}
 \end{dcases*}
 \]
-If a string contains two instances of s, a fitness of 16 is achieved. If all instances are found, fitness = 128. \(s_i\) instances are blocks of all 1s but as with the HIFF, a random mask is applied to the output of DAGA before fitness evaluation.
-\subsubsection{MAXSAT}
-To add.
+If a string contains two instances of s, a fitness of 16 is achieved. If all instances are found, fitness = 128. \(s_i\) instances are blocks of all 1s but as with the HIFF, a random mask is applied to solutions from the neural network models before fitness evaluation.
+\subsubsection{Maximum Satisfaction}
+The maximum satisfaction problem (MaxSat) is defined as finding an interpretation of predicates that satisfies the maximum number of clauses in a given predicate logical formula in conjunctive-normal form (CNF). This is known to be a difficult problem for GAs due to partial solutions leading away from the optimal solution (\cite{rana1998genetic,pelikan2003hierarchical}). Here, algorithms are tested on a 3-CNF, 100-bit MaxSat problem obtained from SATLIB. The problem consists of 430
+clauses and belongs to the phase transition region, which is the point at which
+the problem transitions from generally solvable to generally unsolvable. This instance is available in the supplementary material.
+\subsection{Comparison Algorithms}
+\label{sec:comparisons}
+The neural networks are compared to a Genetic Algorithm (GA), Population-based Incremental Learning Algorithm (PBIL) and the Bayesian Optimisation Algorithm (BOA). The GA was chosen to see whether GA-dA and GA-NADE outperform a canonical evolutionary algorithm and thus tests whether the method has potential. The GA uses two-point crossover and bit-flip mutation.
 
+PBIL is a univariate estimation of distribution algorithm which operates on a single genetic string, a probability vector that represents the likelihood of each variable being present in the population. Each element in the probability vector, \(p^n\),  is initially set to 0.5. The algorithm learns online, updating \(p\) using,
+\[
+p_i = (1-\alpha)p_i + \alpha b_i \ \ \ \ \forall{i \in{[1 ... n]}}
+\]
+where \(b\) is the best solution found in a set of samples from \(p\) at each iteration. The algorithm was chosen to see how a univariate EDA compares to GA-dA and GA-NADE. Additionally, the two neural network methods are similar to PBIL as they also learn online.
+
+BOA probabilistically models solutions present in a population by building a Bayesian network. At each iteration, a new Bayesian network, \(BN\), is constructed from a selection of solutions from the population selected by truncation selection. The joint distribution encoded in the network is then sampled from, and the samples are incorporated into the population. BOA was selected for comparison because the model captures multi-variate dependencies and the NADE model approximates a Bayesian network. In BOA the Bayesian network is constructed using a greedy algorithm, that restricts each node to having two parents at most, to limit computational cost.
 \section{Results}
  \begin{table}[t!]
    \scalebox{0.8}{
@@ -162,7 +220,9 @@ Weing8 Knapsack & GA & 619568.0 & 621086.0 & 620137.40 \(\pm\)511 & 100000.00 \(
 
 \end{table}
 
-Figures \ref{figure:results_plots1} and \ref{figure:results_plots2} show plots of the best found fitness as the number of evaluations increase, averaged across ten independent trials, as well as boxplots showing the distribution of the best found solutions at the end of the optimisation process, for each of the six test problems. Results are also summarised in table \ref{table_results}. We observe that on four of the six problems, either GA-dA or GA-NADE performs the best, with BOA outperforming both on the two HIFF problems.
+The neural network methods and the three comparison algorithms described in Section \ref{sec:comparisons} were tested on the discrete problems described above. Before comparison, a grid search was performed on the parameters of all five algorithms, on a problem by problem basis. The parameter configuration that achieved the best fitness (averaged over three trials) was selected for comparison. On each problem, the algorithms were assessed over 10 independent trials.
+ 
+Figures \ref{figure:results_plots1} and \ref{figure:results_plots2} show plots of the best found fitness as the number of evaluations increase, averaged across ten independent trials, as well as boxplots showing the distribution of the best found solutions at the end of the optimisation process, for each of the six test problems. Results are also summarised in table \ref{table:main_results}. We observe that on four of the six problems, either GA-dA or GA-NADE performs the best, with BOA outperforming both on the two HIFF problems.
 
 On the MaxSat problem, GA-NADE is the only algorithm that reaches the optimal solution on all 10 trials. Although both GA-NADE and GA-dA progress in a similar manner earlier on in the search process, the NADE method continues to improve and finds the optimal solution of 430 satisfied clauses much more quickly, within around 140,000 evaluations. Interestingly BOA is unable to find the optimal solution within the evaluation limit, although it performs much better than PBIL and the GA.
 \begin{figure}[t!]
@@ -250,16 +310,40 @@ GA-dA is also the fastest consistent solver of the 128-bit Royal Road Problem. T
 \centering
     \includegraphics[scale=0.7]{da_croad.pdf}
   \includegraphics[scale=0.7]{nade_croad.pdf}
-  \caption{}
+  \caption{Showing sub-problem solutions from 50,000 samples from the dA and NADE given different conditions.}
   \label{fig:nade_vs_da2}
 \end{figure}
 
 \subsection{Neural Network Methods Comparison}
 
-There are clear differences in the performance of the two Neural Network based algorithms, with GA-NADE performing much better than GA-dA on the HIFF and MaxSat problems but significantly worse on the others. The two methods discover structure in solution space in considerably different ways, with GA-NADE creating a generative model in the form of a Bayesian graph and GA-dA through a compressed encoding of promising solutions. In this section we will first investigate the differences between the NADE and Autoencoder models on a specially designed function and then provide further analysis on a selection of the problems from the results section above.
+There are clear differences in the performance of the two Neural Network based algorithms, with GA-NADE performing much better than GA-dA on the HIFF and MaxSat problems but significantly worse on the others. The two methods discover structure in solution space in considerably different ways, with GA-NADE creating a generative model in the form of a Bayesian network and GA-dA through a compressed encoding of promising solutions. In this section we will first investigate the differences between the NADE and Autoencoder models on a specially designed function and then provide further analysis on a selection of the problems from the results section above.
 
 \subsubsection{A Royal Road with Linkages}
-A new objective function has been devised based on Mitchell et al.'s Royal Road [\cite{mitchell}]. A solution consists of \(n\) non-overlapping partitions, \(p_i i\in{[1\ ... \ n]}\), of size \(2k\). \(p_i\) is further divided into two non-overlapping partitions of size \(k\), \(\hat{p}_{iL}\) on the left side and \(\hat{p}_{iR}\) on the right. If each bit in \(\hat{p}_{iL}\) is equal to 1 and each bit in \(\hat{p}_{iR}\) is equal to 0, 1 is added to fitness. Alternatively, a 1 is added to fitness if each bit in \(\hat{p}_{iL}\) is equal to 0 and each bit in \(\hat{p}_{iR}\) is equal to 1. Finally, an additional 1 is added to fitness if every bit in \(\hat{p}_{1L}\) and \(\hat{p}_{nR}\) are equal to 1, or if every bit in \(\hat{p}_{1L}\) and \(\hat{p}_{nR}\) is equal to 0, where \(i=1\) signifies the first partition and \(i=n\) the last. An example is given for a 24-bit sequence in figure ?. This fitness function has been invented to explore how the algorithms deal with dependency between blocks of variables. There is linkage between the first and second halves of each partition, which is referred to below as `local-linkage', and between the first \(k\) and the last \(k\) bits in the string, referred to as the `global-linkage'.
+\begin{figure}[t!]
+\centering
+\subfigure[Showing how a bit string is partitioned on the Royal Road with Linkages]{
+\makebox[1.0\textwidth]{
+        \includegraphics[scale=0.7]{churchill_road_example1.png}
+    }
+}
+\subfigure[An example optimal solution on the Royal Road with Linkages]{
+\makebox[1.0\textwidth]{
+        \includegraphics[scale=0.7]{churchill_road_example2.png}
+    }
+}
+\caption[Optional caption for list of figures]{Showing samples from the dA and NADE on the Royal Road with Linkages problem.}
+  \label{fig:nade_vs_da1}
+\end{figure}
+
+\begin{figure}[t!]
+\centering
+    \includegraphics[scale=0.7]{da_croad.pdf}
+  \includegraphics[scale=0.7]{nade_croad.pdf}
+  \caption{Showing sub-problem solutions from 50,000 samples from the dA and NADE given different conditions.}
+  \label{fig:churchillroadexample}
+\end{figure}
+
+A new objective function has been devised based on Mitchell et al.'s Royal Road [\cite{mitchell}]. A solution consists of \(n\) non-overlapping partitions, \(p_i i\in{[1\ ... \ n]}\), of size \(2k\). \(p_i\) is further divided into two non-overlapping partitions of size \(k\), \(\hat{p}_{iL}\) on the left side and \(\hat{p}_{iR}\) on the right. If each bit in \(\hat{p}_{iL}\) is equal to 1 and each bit in \(\hat{p}_{iR}\) is equal to 0, 1 is added to fitness. Alternatively, a 1 is added to fitness if each bit in \(\hat{p}_{iL}\) is equal to 0 and each bit in \(\hat{p}_{iR}\) is equal to 1. Finally, an additional 1 is added to fitness if every bit in \(\hat{p}_{1L}\) and \(\hat{p}_{nR}\) are equal to 1, or if every bit in \(\hat{p}_{1L}\) and \(\hat{p}_{nR}\) is equal to 0, where \(i=1\) signifies the first partition and \(i=n\) the last. An example is given for a 32-bit sequence in figure \ref{fig:churchillroadexample}. This fitness function has been invented to explore how the algorithms deal with dependency between blocks of variables. There is linkage between the first and second halves of each partition, which is referred to below as `local-linkage', and between the first \(k\) and the last \(k\) bits in the string, referred to as the `global-linkage'.
 
 GA-NADE and GA-dA are applied to a 32-bit version of this problem (\(k=4,n=4\)), both using a population size of 500. Samples produced by the models at the point that the optimal solution is found are explored in figures ~\ref{fig:nade_vs_da1} and ~\ref{fig:nade_vs_da2}. In figure ~\ref{fig:nade_vs_da1}(a), samples have been reduced from 32 dimensions to 8, by displaying only the sub-partitions. If more than 2 bits in a sub-partition are equal to 1, the corresponding element in the string in the figure is assigned a 1, with a 0 otherwise. Underneath each figure a plot shows the overall bias, the probability of a sub-partition consisting of all 1s or all 0s, averaged across the samples. Figure ~\ref{fig:nade_vs_da1}(b) shows, for each sample, which of the four partitions have been solved (sub-problems 1 - 4), and whether every bit in \(\hat{p}_{1L}\) and \(\hat{p}_{nR}\) is equal to 1, or if every bit in \(\hat{p}_{1L}\) and \(\hat{p}_{nR}\) is equal to 0 (sub-problem 5). Therefore it shows which local-linkage sub-problems have been solved and whether the global-linkage problem has also been solved.
 
@@ -316,7 +400,7 @@ The samples displayed in figure \ref{fig:nade_vs_da2} provide an interesting ins
         \includegraphics[scale=0.4]{results/knapsack_sample_probs_random.png}
     }
 }
-  \caption{Showing statistics from samples from the dA and NADE models on the Royal Road.}
+  \caption{Showing statistics from samples from the dA and NADE models on the Weing8 Knapsack instance.}
   \label{fig:results_hists3}
 \end{figure}
 
@@ -331,10 +415,11 @@ For the Weing8 knapsack problem instance, the histograms in figure \ref{fig:resu
 \subsection{Areas for Further Investigation}
 In this paper we have demonstrated how the dA and NADE models can be successfully incorporated into an evolutionary search. Both models outperform a GA on number of problems (the dA is never beaten by a GA) as well as PBIL and BOA on certain problems. There are a number of areas that are currently being investigated that could potentially improve performance. Both models are trained online, and we have seen in the previous section that a bias creeps into the models. For example, in the Royal Road problem the NADE has a strong bias towards the bits in two partitions being set to 0, keeping it in a local optima for a long time. Training online allows search space structure discovered earlier in the search process to be reused later. It also helps to keep down the computational cost of model building. However, rebuilding the models either at certain predefined intervals, at every iteration or when probabilities begin to peak could reduce sample bias and improve the performance of the algorithm. As an aside, there could be another benefit to training online, which is the potential for transfer of the models between different related instances of the same class of problem. The question of transfer learning - can building a model to solve one task help improve performance on another? - has not been answered by the EDA community, although recent work has made a start (e.g. \cite{hauschild2012using}). Preliminary investigations suggest that using a dA, information learned in one task can be retained and recombined with that learnt in a second task to produce an across the board speed up on the third task in the sequence. Careful experimentation is needed to discover which types of problem can use machine learning techniques to transfer knowledge between unique instances and speed up optimisation as more examples are encountered.
 
-In the last decade there has been a resurgence of interest in neural network-based methods, spurred by so called `deep architectures'. Both the dA and NADE could potentially benefit from the hierarchical features supported by deep networks and this needs to be investigated further. A potential problem with the NADE model is the precedence ordering of variables, which could have a great effect on the quality of the learnt distribution, as well as the training time. There are several paths that could be taken in this direction, for example having multiple models being learnt in parallel or using alternate methods to learn Bayesian graphs at certain points in the search process and using the discovered ordering for the NADE model.
+In the last decade there has been a resurgence of interest in neural network-based methods, spurred by so called `deep architectures'. Both the dA and NADE could potentially benefit from the hierarchical features supported by deep networks and this needs to be investigated further. A potential problem with the NADE model is the precedence ordering of variables, which could have a great effect on the quality of the learnt distribution, as well as the training time. There are several paths that could be taken in this direction, for example having multiple models being learnt in parallel or using alternate methods to learn Bayesian networks at certain points in the search process and using the discovered ordering for the NADE model.
 
+With both models, although especially with the NADE, the addition of local search could improve performance by providing more exploitation and fine-tuning of solutions, as seen in pelikan2003hierarchical. This would allow the dA or NADE to power a more global search and a share of the responsibility for exploitation to the local search procedure. In the same vein, an interesting extension of the algorithms would be to hybridise them with a selectorecombinative evolutionary algorithm (EA). Here, the EA could maintain the population of solutions, recombining and mutating them, while the neural network models are trained on the population. The EA could draw upon the models to generate genotypes, to guide search in a direction learnt from the structure of the solution space. 
 \subsection{Real Valued, Mixed Integer and Multi-objective Problems}
-Both the NADE and dA can be modified to work with continuous or mixed-integer domains, providing an advantage over other discrete only EDA methods. Add to this...
+Both the NADE and dA can be modified to work with continuous or mixed-integer domains, providing an advantage over other discrete only EDA methods. \textcolor{red}{Sid to Add to this...}
 
 \section{Conclusion}
 We have presented a novel stochastic evolutionary algorithm based on two neural network models that provide a distribution of mutated samples. Training online, using the best found genotypes, the models are able adaptively learn an exploration distribution, which guides it towards optimal solutions on difficult problems such as the 256-bit HIFF, regularly outperforming a Genetic Algorithm and other EDA methods on a number of problems.
@@ -345,4 +430,3 @@ We have presented a novel stochastic evolutionary algorithm based on two neural 
 
 
 \end{document}
-
